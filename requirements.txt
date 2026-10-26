@@ -1,0 +1,12 @@
+# Everything for a real run. Installs PyTorch through sentence-transformers (about 1 GB).
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+matplotlib>=3.8
+pyyaml>=6.0
+requests>=2.31
+sentence-transformers>=3.0
+
+# Development
+pytest>=8.0
+ruff>=0.6

@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      # Light install: no PyTorch, CI uses the TF-IDF embedder and the mock judge.
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest
+      - name: Smoke test the whole pipeline
+        run: mfeval all --name ci --backend mock --embedder tfidf --judge mock

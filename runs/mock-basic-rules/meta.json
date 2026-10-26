@@ -1,0 +1,9 @@
+{
+  "assistant": "mock",
+  "n_cases": 186,
+  "created": "2026-10-26T21:58:55+00:00",
+  "embedder": "tfidf",
+  "judge": "mock-judge",
+  "fact_rule": false,
+  "judge_seconds_total": 0.0
+}

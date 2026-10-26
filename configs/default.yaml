@@ -1,0 +1,17 @@
+# Cost of one test at each level, in abstract compute units.
+# Rough reasoning: rules take microseconds, a small embedding model a few milliseconds,
+# and a 7B judge model a few seconds per answer on a laptop. Change these to your own
+# measured times (the report prints them for real runs).
+costs:
+  L1: 1
+  L2: 5
+  L3: 100
+
+# Similarity below this counts as a fail at L2 (depends on the embedder).
+l2_threshold:
+  st: 0.55
+  tfidf: 0.35
+
+assistant_model: llama3.2:3b
+judge_model: qwen2.5:7b
+runs_dir: runs

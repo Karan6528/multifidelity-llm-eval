@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Simulated run (no downloads)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mfeval",
+      "args": ["all", "--name", "mock", "--backend", "mock", "--embedder", "tfidf", "--judge", "mock"],
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}/src" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Real run (Ollama + sentence-transformers)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mfeval",
+      "args": ["all", "--name", "ollama-llama3.2-3b", "--backend", "ollama", "--model", "llama3.2:3b",
+               "--embedder", "st", "--judge", "ollama", "--judge-model", "qwen2.5:7b"],
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}/src" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Label answers myself",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mfeval",
+      "args": ["label", "--name", "ollama-llama3.2-3b", "--n", "50"],
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}/src" },
+      "console": "integratedTerminal"
+    }
+  ]
+}
