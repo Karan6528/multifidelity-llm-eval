@@ -1,150 +1,131 @@
-# Multi-fidelity evaluation for an in-car LLM assistant
+# Testing an in-car LLM assistant without paying for a judge on every test
 
 ![ci](https://github.com/Karan6528/multifidelity-llm-eval/actions/workflows/ci.yml/badge.svg)
 
-How do you test an LLM voice assistant for a car without running a big judge model on every single test?
+During my internship at ScikIQ I built RAG systems and chatbots. Getting them to answer was not the hard part. The hard part was knowing if an answer was actually good. I ended up reading a lot of answers by hand, and that obviously doesn't scale.
 
-That is the question behind this project. When I built RAG systems and chatbots during my internship at ScikIQ, the building part was the easy bit. The hard part was knowing whether an answer was actually good. Reading every answer yourself doesn't scale. Asking a large LLM to grade every answer works much better, but it is slow and it gets expensive once you have hundreds of tests and run them after every change.
+The usual fix is to let a bigger LLM grade the answers ("LLM-as-judge"). That works well, but it is slow. If you have a few hundred tests and you want to run them after every change, it adds up quickly.
 
-So I built a small framework that scores each answer at three levels of cost, and then checks which mix of levels catches the most failures for the least compute.
+So for this project I tried something in between. Every answer can be checked at three levels, from cheap to expensive, and I wanted to find out how much of the expensive checking you can skip without missing failures.
+
+I picked an in-car voice assistant as the use case ("set the temperature to 21", "how far can I still drive?"), because there the mistakes really matter: a wrong number about your battery or a "sure!" to an unsafe request is not just a bad answer.
 
 ## The three levels
 
-| Level | What it does | Cost | Good at | Blind to |
-|---|---|---|---|---|
-| **L1 Rules** | Checks the JSON output: right intent, right slot values, numbers repeated back, short enough for a driver, asks before sending a message | microseconds | anything you can check mechanically | whether the answer makes sense |
-| **L2 Similarity** | Compares the spoken answer with a reference answer using sentence embeddings ([all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2), PyTorch) | milliseconds | off-topic and unhelpful answers | small factual errors ("312 km" vs "213 km" look almost the same) |
-| **L3 LLM judge** | A bigger model grades the answer from 1 to 5 against a written rubric, seeing the vehicle state and the expected behaviour | seconds | almost everything | it is slow, and it can be wrong too, so I check it against my own labels |
+**L1, rules.** Plain Python, no model. Did the assistant return valid JSON, the right intent, the right values (21 degrees, not 23)? Is the answer short enough to listen to while driving? Does it ask before sending a message? For questions about the car, does the number match the vehicle data? This takes microseconds.
 
-The low levels run on every test. The question is which tests deserve the expensive one.
+**L2, similarity.** I embed the answer and a reference answer with sentence-transformers ([all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2), PyTorch) and compare them. This catches answers that pass the rules but talk about something else, or just say "I'm not sure what you mean". Takes a few milliseconds.
 
-```
-186 test requests ──► assistant ──► answers
-                                     │
-               ┌─────────────────────┼─────────────────────┐
-               ▼                     ▼                     ▼
-          L1 rules             L2 similarity            L3 judge
-          (all tests)          (rule passes)         (only some tests?)
-               └──────────► selection strategy ◄──────────┘
-                                     │
-                       failures caught vs. compute cost
-```
+**L3, LLM judge.** A bigger model gets the request, the vehicle data, the expected behaviour and the answer, and gives a score from 1 to 5 using a rubric (`src/mfeval/evaluators/judge.py`). Best quality, but seconds per answer. It can also be wrong, so there is a small tool to label answers myself and check how much I agree with it.
 
-## Test suite
+Rules always run because they cost nothing. The real question is which answers should go to the judge.
 
-186 requests a driver might make, generated from templates with a fixed seed (`data/testsuite.jsonl`):
+## The tests
 
-- climate, seat heating, navigation, music, calls and messages, in normal wording, paraphrased and as sloppy speech-to-text ("hey car navigate to MBW Welt")
-- questions about the car (range, battery, tyre pressure, outside temperature) that must be answered with the numbers from the vehicle state
-- requests a car assistant can't do ("book me a flight") and requests it must refuse ("play a movie while I'm driving")
+186 requests, generated from templates with a fixed seed so everyone gets the same file (`data/testsuite.jsonl`). Climate, seat heating, navigation, music, calls, messages and questions about the car. Each one comes in normal wording, reworded, and as messy speech-to-text like "hey car navigate to MBW Welt". There are also things the assistant can't do ("book me a flight") and things it should refuse ("play a movie while I'm driving").
 
-Each test has the expected intent, the slots, a reference answer and the vehicle state.
+## What I compared
 
-## Selection strategies I compared
+I score every answer at all three levels once, and then replay different strategies on those scores. That way every strategy is judged on exactly the same answers.
 
-All strategies are simulated on the same scores (every test is scored at every level once), so the comparison is fair:
+- rules only
+- rules + a similarity threshold (no judge)
+- judge on everything (the expensive baseline)
+- rules, then the judge on a random sample
+- a cascade: similarity decides the obvious cases, the judge only looks at the unclear middle
+- budget-aware: you have a fixed judge budget and spend it on the least similar answers first
 
-1. **Rules only**: just L1.
-2. **Rules + similarity**: L1, then fail anything below a similarity threshold. No judge at all.
-3. **Judge on everything**: the expensive reference, 100% cost. Plus **rules + judge on everything** (101%), which catches whatever either of them catches.
-4. **Rules + judge on a random sample**: the obvious baseline for a fixed budget.
-5. **Cascade**: similarity decides the clear cases, and the judge only sees the grey zone in between.
-6. **Budget-aware**: given a judge budget, spend it on the answers that are least similar to the reference first.
+Cost is relative to running the judge on every test. I used 1 / 5 / 100 units per test for L1 / L2 / L3 (`configs/default.yaml`). These are guesses for now, the real run measures the actual times. I also ignore any strategy where less than 80% of what it flags is really broken, otherwise "flag everything" would win.
 
-Cost is measured relative to running the judge on every test, with L1 = 1, L2 = 5 and L3 = 100 units per test (`configs/default.yaml`). A strategy only counts if at least 80% of what it flags is a real failure. Otherwise "flag everything" would look perfect.
+## First results (simulated assistant)
 
-## Results so far (simulated assistant)
+I haven't run a real model through this yet. To check the framework itself works, I wrote a fake assistant (`MockAssistant`) that answers correctly most of the time, with different wording each time, but makes ten kinds of mistakes on purpose: wrong intent, wrong values, broken JSON, rambling, going off topic, sending a message without asking, wrong numbers about the car, agreeing to unsafe requests, and a few more. Because I know which answers are broken, I can see exactly what each level catches. The fake judge also makes mistakes now and then, so it isn't perfect either.
 
-Before plugging in a real model, I tested the framework on a simulated assistant (`MockAssistant`). It answers correctly most of the time, in varied wording like a real model, but injects ten kinds of faults on purpose: wrong intent, wrong slot value, broken JSON, rambling, off-topic answers, sending a message without asking, wrong numbers about the car, agreeing to unsafe requests, and so on. Because I know exactly which answers are broken, I can measure precisely what each level catches. The simulated judge also makes mistakes on purpose: it misses some subtle faults and sometimes fails a correct answer.
-
-46 of the 186 answers were broken. With the basic rules:
+46 of the 186 answers were broken. First with only the basic rules:
 
 ![Cost vs recall, basic rules](runs/mock-basic-rules/frontier.png)
 
-| Strategy | Cost (% of full judge) | Failures caught |
+| Strategy | Cost (% of judging everything) | Failures caught |
 |---|---|---|
 | Rules only | 1% | 80.4% |
 | Rules + similarity | 5% | 87.0% |
-| Budget-aware, judge 5% of rule passes | 8.8% | 87.0% |
-| Random sample, same budget | 9.1% | 82.3% |
-| Cascade, grey zone 0.1–0.7 | 46.9% | 91.3% |
-| Cascade, grey zone 0.1–0.9 | 57.7% | 100% |
-| Judge on everything | 100% | 100% |
+| Judge the least similar 5% | 8.8% | 87.0% |
+| Judge a random sample (same budget) | 9.1% | 82.3% |
+| Cascade, unclear zone 0.1–0.7 | 46.9% | 91.3% |
+| Cascade, unclear zone 0.1–0.9 | 57.7% | 100% |
+| Judge everything | 100% | 100% |
 
-What I learned from this:
+A few things surprised me.
 
-- **Rules are underrated.** They cost almost nothing and caught 80% of the failures, including every wrong slot value, missing slot and unconfirmed message.
-- **Ranking by similarity beats random sampling at small budgets.** At about 9% of the cost it caught 87% of failures, against 82% for a random sample. Then it plateaus.
-- **The plateau is wrong numbers.** "You have 213 km of range left" when the car says 312 km looks almost identical to a correct answer, so similarity puts it at the very end of the queue. In this run only the judge caught them (L1 0%, L2 17%, L3 100%).
-- **So I added one more cheap rule**: for questions about the car, the number in the answer must match the vehicle state. With that rule, rules alone catch 93.5% at 1% of the cost, and rules + similarity catch all 46 failures at 4.8% of the cost ([report](runs/mock/report.md)). It is a good reminder that the cheapest improvement is often a better low-fidelity check, not a smarter way to call the expensive one.
+The rules did much better than I expected. 80% of the failures for basically no cost. Wrong values, missing values and unconfirmed messages were all caught here.
 
-Honest caveat: the simulated assistant only makes the mistakes I designed it to make, so the cheap levels look better here than they will on a real model. That is why the next step is a real run.
+Picking the least similar answers for the judge was better than picking randomly, at least with a small budget (87% vs 82% at about 9% of the cost). But after that it got stuck.
 
-## Running it on a real model
+The reason was wrong numbers. "Around 213 km of range left" when the car says 312 km reads almost the same as the correct answer, so the similarity score is high and these answers end up last in the queue. There were 6 of them in this run. The rules caught none, similarity caught 1, and the judge caught all 6.
 
-The real setup runs fully locally with [Ollama](https://ollama.com): a small model as the assistant and a bigger one as the judge.
+So I added one more rule: for questions about the car, the number in the answer has to match the vehicle data. That one rule changed a lot. Rules alone went to 93.5% at 1% of the cost, and rules + similarity caught all 46 failures at 4.8% ([full report](runs/mock/report.md)). Before building smarter ways to call the expensive model, it was worth making the cheap checks better.
 
-```bash
-ollama pull llama3.2:3b     # the assistant under test
-ollama pull qwen2.5:7b      # the judge
+To be clear, the fake assistant only makes the mistakes I gave it, so the cheap checks probably look better here than they will with a real model. That's the next step.
 
-mfeval all --name ollama-llama3.2-3b --backend ollama --model llama3.2:3b \
-           --embedder st --judge ollama --judge-model qwen2.5:7b
-```
+## Running it with a real model
 
-For real runs there is no exact ground truth. An answer counts as broken if it breaks a hard rule (a wrong slot value is a bug whatever the judge thinks) or the judge fails it. Since that leans heavily on the judge, I check the judge against my own labels:
+Everything runs locally with [Ollama](https://ollama.com), a small model as the assistant and a bigger one as the judge.
 
 ```bash
-mfeval label --name ollama-llama3.2-3b --n 50   # label 50 answers yourself: p = pass, f = fail
-mfeval report --name ollama-llama3.2-3b         # adds agreement (Cohen's kappa) per level
+ollama pull llama3.2:3b     # assistant
+ollama pull qwen2.5:7b      # judge
+
+mfeval all --name ollama-llama3.2-3b --backend ollama --model llama3.2:3b --embedder st --judge ollama --judge-model qwen2.5:7b
 ```
 
-The report then also shows the measured time per test at each level, so you can replace my guessed cost units with real ones.
+With a real model nobody knows the right answer for sure, so an answer counts as broken if it fails a hard rule or the judge fails it. Because that depends a lot on the judge, I label 50 answers myself and compare:
 
-## Quick start
+```bash
+mfeval label --name ollama-llama3.2-3b --n 50
+mfeval report --name ollama-llama3.2-3b
+```
 
-Needs Python 3.10+.
+The report then shows how often each level agrees with me (with Cohen's kappa) and how long each level really took per test.
+
+## Setup
+
+Python 3.10 or newer.
 
 ```bash
 git clone https://github.com/Karan6528/multifidelity-llm-eval.git
 cd multifidelity-llm-eval
 python -m venv .venv
-# Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
-pip install -e ".[dev,embeddings]"     # leave out ",embeddings" to skip PyTorch
+.venv\Scripts\activate            # on Mac/Linux: source .venv/bin/activate
+pip install -e ".[dev,embeddings]"   # drop ",embeddings" if you don't want PyTorch
 
-mfeval all --name mock                 # simulated run, no downloads, takes seconds
-pytest                                 # 18 tests
+mfeval all --name mock    # the simulated run, takes a few seconds
+pytest
 ```
 
-The results land in `runs/<name>/`: `report.md`, `frontier.png`, `scores.csv` (every answer with its score at every level) and `strategies.csv`.
+Results go to `runs/<name>/`: a report, the chart, every answer with its scores, and the strategy comparison.
 
-**VS Code:** open the folder and install the recommended extensions when asked. Select the `.venv` interpreter, and the Run and Debug panel has ready-made configurations for the simulated run, the real run and labelling. Tests show up in the Testing panel.
+If you use VS Code, the folder has run configurations for the simulated run, the real run and labelling, and the tests show up in the Testing tab.
 
-## Project structure
+## Files
 
 ```
 src/mfeval/
-  testsuite.py          the 186 test requests
-  assistants.py         MockAssistant (injected faults) and OllamaAssistant
-  evaluators/
-    rules.py            L1
-    semantic.py         L2 (sentence-transformers, or TF-IDF for CI)
-    judge.py            L3 (Ollama judge with rubric, or a noisy mock judge)
-  selection.py          the six strategies and the Pareto front
-  metrics.py            agreement and Cohen's kappa
+  testsuite.py        the 186 requests
+  assistants.py       fake assistant + Ollama assistant
+  evaluators/         rules.py (L1), semantic.py (L2), judge.py (L3)
+  selection.py        the strategies
+  metrics.py          agreement, kappa
   pipeline.py, report.py, cli.py
-tests/                  pytest, run in GitHub Actions on every push
-runs/                   saved runs with reports and charts
+tests/                run on every push with GitHub Actions
+runs/                 saved results
 ```
 
-## Limitations and what I'd do next
+## What's missing / next
 
-- 186 tests and one simulated run is a small sample. The differences of a few points between strategies are within noise. Next I want repeated runs with different seeds and confidence intervals.
-- The cost units are estimates. After the real run I'll replace them with measured times.
-- Similarity to a single reference answer punishes correct answers that are worded very differently. Several references per test, or comparing against the intent instead of one sentence, would help.
-- A natural next level between L1 and L3 is a small, cheap LLM judge, which would make it a true multi-fidelity ladder rather than three fixed steps.
-- Learning the escalation threshold from past runs, instead of sweeping it, is the obvious step towards proper test optimisation.
+- 186 tests and one simulated run is small. A difference of 2 or 3 points between strategies could just be noise. I want to repeat it with different seeds and add confidence intervals.
+- The cost numbers are guesses until the real run.
+- Comparing with one reference sentence is unfair to correct answers that are worded very differently. More references per test would help.
+- A small, cheap LLM judge between L2 and L3 would make it a proper ladder instead of three fixed steps.
+- Right now I try out thresholds by hand. Learning them from earlier runs would be the more interesting version of test optimisation.
 
-## License
-
-MIT
+MIT license.
