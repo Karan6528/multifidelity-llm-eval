@@ -109,6 +109,20 @@ def run_strategies(df: pd.DataFrame, costs: dict | None = None,
         results.append(_score(df, ~l1 | (judged & ~l3), cost, costs,
                               "Budget-aware (judge the least similar first)",
                               f"judge {int(share * 100)}% of L1 passes"))
+
+    # 7) Rules as triage: on real data the rules raise false alarms (a "MBW Welt" the
+    # driver is fine with, a polite refusal with the wrong intent label). So instead of
+    # failing what the rules flag, send it to the judge to confirm. Optionally also
+    # judge some rule passes, least similar first.
+    n_l1_fail = int((~l1).sum())
+    for share in (0.0, 0.1, 0.2, 0.3, 0.5):
+        k = int(round(share * len(pass_idx)))
+        judged = np.zeros(n, bool)
+        judged[order[:k]] = True
+        cost = base_cost + costs["L3"] * n_l1_fail + (l2_cost + costs["L3"] * k if k else 0)
+        flagged = (~l1 & ~l3) | (judged & ~l3)
+        label = "judge confirms rule fails" + (f" + {int(share * 100)}% of passes" if k else "")
+        results.append(_score(df, flagged, cost, costs, "Rules triage, judge confirms", label))
     return results
 
 

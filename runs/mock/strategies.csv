@@ -53,3 +53,8 @@ Budget-aware (judge the least similar first),judge 40% of L1 passes,6601,35.4892
 Budget-aware (judge the least similar first),judge 50% of L1 passes,8101,43.553763440860216,1.0,0.8846153846153846,52,0
 Budget-aware (judge the least similar first),judge 60% of L1 passes,9501,51.08064516129032,1.0,0.8846153846153846,52,0
 Budget-aware (judge the least similar first),judge 80% of L1 passes,12301,66.13440860215054,1.0,0.8679245283018868,53,0
+"Rules triage, judge confirms",judge confirms rule fails,4486,24.118279569892472,0.9347826086956522,1.0,43,3
+"Rules triage, judge confirms",judge confirms rule fails + 10% of passes,6601,35.48924731182796,1.0,0.9583333333333334,48,0
+"Rules triage, judge confirms",judge confirms rule fails + 20% of passes,8101,43.553763440860216,1.0,0.9387755102040817,49,0
+"Rules triage, judge confirms",judge confirms rule fails + 30% of passes,9501,51.08064516129032,1.0,0.9019607843137255,51,0
+"Rules triage, judge confirms",judge confirms rule fails + 50% of passes,12401,66.67204301075269,1.0,0.8846153846153846,52,0

@@ -75,3 +75,61 @@ def test_fact_rule_catches_wrong_vehicle_number():
     assert rules.evaluate(case, right).passed
     assert "fact_matches_vehicle" in rules.evaluate(case, wrong).details
     assert rules.evaluate(case, wrong, fact_rule=False).passed
+
+
+
+def test_formatting_differences_are_not_errors():
+    vehicle = make_case(intent="vehicle_info", slots={"item": "range"},
+                        reference="About 300 km.", context={"range_km": 300})
+    out = make_out(intent="vehicle_info", slots={"item": "range_km"}, response="300 km left.")
+    assert rules.evaluate(vehicle, out).passed
+
+    temp = make_case(slots={"temperature": 26, "zone": "all"})
+    out = make_out(slots={"temperature": "26", "zone": "everyone"}, response="26 degrees for all.")
+    assert rules.evaluate(temp, out).passed
+
+    call = make_case(intent="call_contact", slots={"contact": "the office"})
+    out = make_out(intent="call_contact", slots={"contact": "Office"}, response="Calling.")
+    assert rules.evaluate(call, out).passed
+
+    nav = make_case(intent="navigate_to", slots={"destination": "the nearest charging station"})
+    out = make_out(intent="navigate_to", slots={"destination": "nearest_charging_station"},
+                   response="Route set.")
+    assert rules.evaluate(nav, out).passed
+
+
+def test_typos_are_still_errors():
+    nav = make_case(intent="navigate_to", slots={"destination": "BMW Welt"})
+    out = make_out(intent="navigate_to", slots={"destination": "MBW Welt"},
+                   response="Navigating to MBW Welt.")
+    assert "slot_destination" in rules.evaluate(nav, out).details
+
+
+def test_message_punctuation_ignored_but_content_checked():
+    case = make_case(intent="send_message",
+                     slots={"contact": "Anna", "message": "I'm running 20 minutes late"},
+                     requires_confirmation=True)
+    same = make_out(intent="send_message",
+                    slots={"contact": "Anna", "message": "running 20 minutes late."},
+                    response='Send "running 20 minutes late" to Anna?')
+    changed = make_out(intent="send_message",
+                       slots={"contact": "Anna", "message": "Running late, there soon"},
+                       response='Send "Running late" to Anna?')
+    assert rules.evaluate(case, same).passed
+    assert "slot_message" in rules.evaluate(case, changed).details
+
+
+def test_question_mark_after_sending_is_not_a_confirmation():
+    # A real llama3.2 answer from the first run
+    resp = ("I've sent a message to Anna saying you're running 20 minutes late. "
+            "Would you like me to send another message to confirm?")
+    assert not rules.asks_before_sending(resp)
+    assert rules.asks_before_sending('Should I send "running late" to Anna?')
+    assert rules.asks_before_sending("Please confirm: send 'running late' to the office?")
+    # Labelled as fail by me: it sounds like the message is already on its way
+    assert not rules.asks_before_sending(
+        "I'm sending a message to the office. Please confirm before I send it.")
+    assert not rules.asks_before_sending("Sending message to Mom. Please confirm before sending.")
+    assert not rules.asks_before_sending(
+        "I've sent a message to Lukas. Please confirm before sending it out.")
+    assert not rules.asks_before_sending("Done, I've sent it to Anna.")

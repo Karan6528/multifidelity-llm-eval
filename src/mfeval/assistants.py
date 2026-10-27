@@ -21,6 +21,13 @@ import requests
 from .schema import AssistantOutput, TestCase
 from .testsuite import CONTACTS, DESTINATIONS, GENRES, INTENTS, SEATS, VEHICLE_ITEMS, ZONES
 
+# Added after the first real run, where the model invented values like "range_km" and
+# "everyone" because the prompt only listed the slot names.
+ALLOWED_VALUES = {
+    "zone": ZONES, "seat": SEATS, "item": list(VEHICLE_ITEMS), "level": [1, 2, 3],
+    "temperature": "whole number in degrees Celsius",
+}
+
 _SLOT_POOLS = {
     "zone": ZONES, "seat": SEATS, "destination": DESTINATIONS, "genre": GENRES,
     "contact": CONTACTS, "item": list(VEHICLE_ITEMS),
@@ -191,6 +198,7 @@ SYSTEM_PROMPT = """You are the voice assistant of a car. Reply ONLY with a JSON 
 {{"intent": <one of {intents}>, "slots": {{...}}, "response": "<what you say to the driver>"}}
 
 Slots per intent: {slots}
+Allowed values where the list is fixed: {values}
 
 Rules:
 - Keep the spoken response short (one or two sentences). The driver is driving.
@@ -229,6 +237,7 @@ class OllamaAssistant:
         system = SYSTEM_PROMPT.format(
             intents=", ".join(INTENTS),
             slots=json.dumps(INTENTS),
+            values=json.dumps(ALLOWED_VALUES),
             context=json.dumps(case.context),
         )
         start = time.perf_counter()

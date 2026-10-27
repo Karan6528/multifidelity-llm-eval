@@ -1,0 +1,10 @@
+{
+  "assistant": "ollama:llama3.2:3b",
+  "n_cases": 186,
+  "created": "2026-10-26T23:52:44+00:00",
+  "embedder": "st",
+  "judge": "ollama-judge:qwen2.5:7b",
+  "fact_rule": true,
+  "judge_seconds_total": 2118.28,
+  "rescored": true
+}

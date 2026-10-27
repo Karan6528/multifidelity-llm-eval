@@ -49,3 +49,19 @@ def fault_catch_table(df: pd.DataFrame) -> pd.DataFrame:
             "L3 judge": float((~g["l3_pass"]).mean()),
         })
     return pd.DataFrame(rows).sort_values("count", ascending=False)
+
+
+def level_agreement(df: pd.DataFrame) -> pd.DataFrame:
+    """How often two levels give the same verdict (no ground truth needed)."""
+    names = {"l1_pass": "L1 rules", "l2_pass": "L2 similarity", "l3_pass": "L3 judge"}
+    rows = []
+    for a, b in (("l1_pass", "l3_pass"), ("l2_pass", "l3_pass"), ("l1_pass", "l2_pass")):
+        x, y = df[a].to_numpy(bool), df[b].to_numpy(bool)
+        rows.append({
+            "levels": f"{names[a]} vs {names[b]}",
+            "same verdict": f"{100 * float((x == y).mean()):.0f}%",
+            "kappa": round(cohen_kappa(~x, ~y), 2),
+            "only the first fails": int((~x & y).sum()),
+            "only the second fails": int((x & ~y).sum()),
+        })
+    return pd.DataFrame(rows)

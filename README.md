@@ -65,27 +65,60 @@ The reason was wrong numbers. "Around 213 km of range left" when the car says 31
 
 So I added one more rule: for questions about the car, the number in the answer has to match the vehicle data. That one rule changed a lot. Rules alone went to 93.5% at 1% of the cost, and rules + similarity caught all 46 failures at 4.8% ([full report](runs/mock/report.md)). Before building smarter ways to call the expensive model, it was worth making the cheap checks better.
 
-To be clear, the fake assistant only makes the mistakes I gave it, so the cheap checks probably look better here than they will with a real model. That's the next step.
+To be clear, the fake assistant only makes the mistakes I gave it, so the cheap checks probably look better here than they will with a real model. So I tried a real one.
+
+## Real model: Llama 3.2 3B, judged by Qwen 2.5 7B
+
+Same 186 tests, everything running locally on my laptop with [Ollama](https://ollama.com): `llama3.2:3b` as the assistant, `qwen2.5:7b` as the judge, all-MiniLM-L6-v2 for similarity.
+
+**Time per answer**
+
+| Level | Time |
+|---|---|
+| L1 rules | under 0.1 ms |
+| L2 similarity | 12 ms |
+| L3 judge | 11.4 s on average, up to 100 s |
+
+The judge took 35 minutes for the whole run, roughly 900 times slower than similarity. My guessed cost units (1 / 5 / 100) were far too kind to it.
+
+**First the rules embarrassed me.** On the first pass they failed 71 answers, the judge only 17. When I looked, most rule failures were my fault: the model wrote `range_km` instead of `range`, `everyone` instead of `all`, `office` instead of `the office`. Perfectly fine answers, but my rules compared exact strings, and my prompt never told the model which values were allowed. I fixed both. I also found that my confirmation rule only checked for a question mark, and the model kept writing things like "I've sent a message to Anna. Would you like me to confirm?". Question mark, message already gone. I fixed that too.
+
+**Then I labelled answers myself.** For a real model nobody knows which answers are wrong, so I went through 63 of them myself (`mfeval label`). The tool shows me the ones where rules and judge disagree first, plus some random ones where they agree, and doesn't show me what they said. My labels are the ground truth. For the other 123 answers I trust rules and judge where they agree.
+
+That gives 21 broken answers out of 186 (11%). Every one of the 18 "send a message" tests failed, because the model always sends first (or says "sending…") and asks afterwards. The other three: YouTube on the centre display while driving (twice), and a poem request turned into a "poetry playlist".
+
+**How each level did**
+
+| Level | Agrees with my labels | Failures caught (of 21) | False alarms |
+|---|---|---|---|
+| L1 rules | 84% (kappa 0.65) | 21 | 10 of 31 flags |
+| L2 similarity | 32% (kappa −0.33) | 8 | 30 of 38 flags |
+| L3 judge | 87% (kappa 0.63) | 15 | 2 of 17 flags |
+
+- **The rules catch everything, but a third of what they flag is fine.** Four polite refusals the model labelled "unsupported" instead of "refuse_unsafe", three "petrol station" destinations without "nearest", and two speech-to-text names I was OK with.
+- **The judge is precise but misses things.** All 6 misses were the same pattern: "I'm sending a message to Mom. Please confirm before sending." The judge read that as asking for confirmation. I didn't, because the driver can't tell if the message is already on its way.
+- **Similarity is no help here.** It disagrees with me more often than it agrees.
+
+**What this means for test selection.** Flagging whatever the rules fail gives too many false alarms, so on this data every strategy that does that is ruled out. What works is using the rules as triage: only answers the rules fail go to the judge, and the judge decides. That catches the same 15 of 21 failures as judging every answer, with no false alarms, at **18% of the cost**. Adding similarity-ranked answers on top didn't catch anything extra.
+
+![Cost vs recall, real model](runs/ollama-llama3.2-3b/frontier.png)
+
+So the simulation and the real run disagree on one big point: with the fake assistant the cheap checks were almost enough on their own, with a real model they are a good filter but not a verdict. Full numbers in the [report](runs/ollama-llama3.2-3b/report.md).
+
+**Honest caveats.** I tightened the confirmation rule after labelling, based on how I labelled, so the rules' 21 of 21 is fitted to this data and will look worse on new tests. The 123 answers I didn't label count as correct when rules and judge agree, which could hide mistakes both of them miss. And 21 failures is a small number to compare strategies on.
 
 ## Running it with a real model
-
-Everything runs locally with [Ollama](https://ollama.com), a small model as the assistant and a bigger one as the judge.
 
 ```bash
 ollama pull llama3.2:3b     # assistant
 ollama pull qwen2.5:7b      # judge
 
 mfeval all --name ollama-llama3.2-3b --backend ollama --model llama3.2:3b --embedder st --judge ollama --judge-model qwen2.5:7b
-```
-
-With a real model nobody knows the right answer for sure, so an answer counts as broken if it fails a hard rule or the judge fails it. Because that depends a lot on the judge, I label 50 answers myself and compare:
-
-```bash
-mfeval label --name ollama-llama3.2-3b --n 50
+mfeval label --name ollama-llama3.2-3b       # label answers yourself, disagreements first
 mfeval report --name ollama-llama3.2-3b
 ```
 
-The report then shows how often each level agrees with me (with Cohen's kappa) and how long each level really took per test.
+Until you have labelled something, the report only shows how the levels agree with each other and makes no claims about failures caught. After changing a rule, `mfeval rescore --name ...` re-runs the cheap levels in seconds and keeps the judge's verdicts.
 
 ## Setup
 
@@ -99,7 +132,7 @@ python -m venv .venv
 pip install -e ".[dev,embeddings]"   # drop ",embeddings" if you don't want PyTorch
 
 mfeval all --name mock    # the simulated run, takes a few seconds
-pytest
+pytest                    # 27 tests
 ```
 
 Results go to `runs/<name>/`: a report, the chart, every answer with its scores, and the strategy comparison.
@@ -122,10 +155,11 @@ runs/                 saved results
 
 ## What's missing / next
 
-- 186 tests and one simulated run is small. A difference of 2 or 3 points between strategies could just be noise. I want to repeat it with different seeds and add confidence intervals.
-- The cost numbers are guesses until the real run.
-- Comparing with one reference sentence is unfair to correct answers that are worded very differently. More references per test would help.
-- A small, cheap LLM judge between L2 and L3 would make it a proper ladder instead of three fixed steps.
-- Right now I try out thresholds by hand. Learning them from earlier runs would be the more interesting version of test optimisation.
+- A fresh set of tests, so I can check the rules on data they weren't tuned on.
+- More labels, and repeated runs with different seeds, so the numbers come with confidence intervals instead of a single run with 21 failures.
+- Use the measured times as costs instead of my guesses.
+- Comparing with one reference sentence is unfair to correct answers worded very differently, which is part of why similarity did so badly. Several references per test, or comparing intents instead of sentences, would help.
+- A small, cheap LLM judge between the rules and the big judge would make it a proper ladder.
+- Right now I pick thresholds by hand. Learning when to escalate from earlier labelled runs is the more interesting version of test optimisation.
 
 MIT license.

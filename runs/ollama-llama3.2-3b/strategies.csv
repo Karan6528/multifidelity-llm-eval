@@ -1,0 +1,60 @@
+family,label,cost,cost_pct,recall,precision,flagged,missed
+Rules only (L1),all tests,186,1.0,1.0,0.6774193548387096,31,0
+Rules + similarity (L1+L2),threshold 0.2,961,5.166666666666667,1.0,0.5526315789473685,38,0
+Rules + similarity (L1+L2),threshold 0.25,961,5.166666666666667,1.0,0.5526315789473685,38,0
+Rules + similarity (L1+L2),threshold 0.3,961,5.166666666666667,1.0,0.5526315789473685,38,0
+Rules + similarity (L1+L2),threshold 0.35,961,5.166666666666667,1.0,0.4883720930232558,43,0
+Rules + similarity (L1+L2),threshold 0.4,961,5.166666666666667,1.0,0.4883720930232558,43,0
+Rules + similarity (L1+L2),threshold 0.45,961,5.166666666666667,1.0,0.4666666666666667,45,0
+Rules + similarity (L1+L2),threshold 0.5,961,5.166666666666667,1.0,0.39622641509433965,53,0
+Rules + similarity (L1+L2),threshold 0.55,961,5.166666666666667,1.0,0.38181818181818183,55,0
+Rules + similarity (L1+L2),threshold 0.6,961,5.166666666666667,1.0,0.3620689655172414,58,0
+Rules + similarity (L1+L2),threshold 0.65,961,5.166666666666667,1.0,0.35,60,0
+Rules + similarity (L1+L2),threshold 0.7,961,5.166666666666667,1.0,0.3088235294117647,68,0
+Rules + similarity (L1+L2),threshold 0.75,961,5.166666666666667,1.0,0.2692307692307692,78,0
+Rules + similarity (L1+L2),threshold 0.8,961,5.166666666666667,1.0,0.21428571428571427,98,0
+Rules + similarity (L1+L2),threshold 0.85,961,5.166666666666667,1.0,0.1826086956521739,115,0
+Rules + similarity (L1+L2),threshold 0.9,961,5.166666666666667,1.0,0.1590909090909091,132,0
+Judge on everything (L3),all tests,18600,100.0,0.7142857142857143,0.8823529411764706,17,6
+Rules + judge on everything,all tests,18786,101.0,1.0,0.6363636363636364,33,0
+Rules + judge on random sample,10% sampled,1786,9.602150537634408,1.0,0.6731854838709677,31,0
+Rules + judge on random sample,20% sampled,3286,17.666666666666668,1.0,0.6686052052785924,31,0
+Rules + judge on random sample,30% sampled,4786,25.731182795698924,1.0,0.6656671554252199,31,0
+Rules + judge on random sample,40% sampled,6386,34.333333333333336,1.0,0.6627547653958943,31,0
+Rules + judge on random sample,50% sampled,7986,42.935483870967744,1.0,0.658649193548387,31,0
+Rules + judge on random sample,60% sampled,9486,51.0,1.0,0.6492192082111435,32,0
+Rules + judge on random sample,80% sampled,12586,67.66666666666667,1.0,0.6431506598240468,32,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.0–0.5,3161,16.99462365591398,1.0,0.6774193548387096,31,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.0–0.6,3661,19.682795698924732,1.0,0.6774193548387096,31,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.0–0.7,4661,25.059139784946236,1.0,0.6774193548387096,31,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.0–0.8,7661,41.18817204301075,1.0,0.65625,32,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.0–0.9,11061,59.46774193548387,1.0,0.6363636363636364,33,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.1–0.5,2661,14.306451612903226,1.0,0.5833333333333334,36,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.1–0.6,3161,16.99462365591398,1.0,0.5833333333333334,36,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.1–0.7,4161,22.370967741935484,1.0,0.5833333333333334,36,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.1–0.8,7161,38.5,1.0,0.5675675675675675,37,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.1–0.9,10561,56.77956989247312,1.0,0.5526315789473685,38,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.2–0.5,2461,13.231182795698924,1.0,0.5526315789473685,38,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.2–0.6,2961,15.919354838709678,1.0,0.5526315789473685,38,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.2–0.7,3961,21.295698924731184,1.0,0.5526315789473685,38,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.2–0.8,6961,37.424731182795696,1.0,0.5384615384615384,39,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.2–0.9,10361,55.704301075268816,1.0,0.525,40,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.3–0.5,2461,13.231182795698924,1.0,0.5526315789473685,38,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.3–0.6,2961,15.919354838709678,1.0,0.5526315789473685,38,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.3–0.7,3961,21.295698924731184,1.0,0.5526315789473685,38,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.3–0.8,6961,37.424731182795696,1.0,0.5384615384615384,39,0
+Cascade (L1 → L2 → L3 on grey zone),grey zone 0.3–0.9,10361,55.704301075268816,1.0,0.525,40,0
+Budget-aware (judge the least similar first),judge 5% of L1 passes,1761,9.46774193548387,1.0,0.6774193548387096,31,0
+Budget-aware (judge the least similar first),judge 10% of L1 passes,2561,13.768817204301076,1.0,0.6774193548387096,31,0
+Budget-aware (judge the least similar first),judge 15% of L1 passes,3261,17.532258064516128,1.0,0.6774193548387096,31,0
+Budget-aware (judge the least similar first),judge 20% of L1 passes,4061,21.833333333333332,1.0,0.6774193548387096,31,0
+Budget-aware (judge the least similar first),judge 30% of L1 passes,5561,29.897849462365592,1.0,0.6774193548387096,31,0
+Budget-aware (judge the least similar first),judge 40% of L1 passes,7161,38.5,1.0,0.6774193548387096,31,0
+Budget-aware (judge the least similar first),judge 50% of L1 passes,8761,47.10215053763441,1.0,0.6363636363636364,33,0
+Budget-aware (judge the least similar first),judge 60% of L1 passes,10261,55.166666666666664,1.0,0.6363636363636364,33,0
+Budget-aware (judge the least similar first),judge 80% of L1 passes,13361,71.83333333333333,1.0,0.6363636363636364,33,0
+"Rules triage, judge confirms",judge confirms rule fails,3286,17.666666666666668,0.7142857142857143,1.0,15,6
+"Rules triage, judge confirms",judge confirms rule fails + 10% of passes,5661,30.43548387096774,0.7142857142857143,1.0,15,6
+"Rules triage, judge confirms",judge confirms rule fails + 20% of passes,7161,38.5,0.7142857142857143,1.0,15,6
+"Rules triage, judge confirms",judge confirms rule fails + 30% of passes,8661,46.564516129032256,0.7142857142857143,1.0,15,6
+"Rules triage, judge confirms",judge confirms rule fails + 50% of passes,11861,63.76881720430107,0.7142857142857143,0.8823529411764706,17,6

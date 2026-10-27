@@ -11,7 +11,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from .metrics import agreement_table, cohen_kappa, fault_catch_table  # noqa: E402
+from .metrics import (  # noqa: E402
+    agreement_table,
+    cohen_kappa,
+    fault_catch_table,
+    level_agreement,
+)
 from .selection import (  # noqa: E402
     MIN_PRECISION,
     StrategyResult,
@@ -28,6 +33,7 @@ COLORS = {
     "Rules + judge on random sample": "#f59e0b",
     "Cascade (L1 → L2 → L3 on grey zone)": "#8b5cf6",
     "Budget-aware (judge the least similar first)": "#16a34a",
+    "Rules triage, judge confirms": "#e11d48",
 }
 
 
@@ -41,7 +47,7 @@ def md_table(df: pd.DataFrame, floatfmt: str = "{:.2f}") -> str:
 
 
 def plot_frontier(results: list[StrategyResult], path: Path, title: str) -> None:
-    fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+    fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
     for family, color in COLORS.items():
         pts = [r for r in results if r.family == family]
         if not pts:
@@ -51,17 +57,19 @@ def plot_frontier(results: list[StrategyResult], path: Path, title: str) -> None
         marker = "D" if len(pts) == 1 else "o"
         good = [r for r in pts if r.precision >= MIN_PRECISION]
         bad = [r for r in pts if r.precision < MIN_PRECISION]
-        ax.scatter([r.cost_pct for r in good], [100 * r.recall for r in good], s=size, c=color,
-                   marker=marker, label=family, alpha=0.9, edgecolors="white", linewidths=0.6,
-                   zorder=3)
+        if good:
+            ax.scatter([r.cost_pct for r in good], [100 * r.recall for r in good], s=size,
+                       c=color, marker=marker, label=family, alpha=0.9, edgecolors="white",
+                       linewidths=0.6, zorder=3)
         if bad:  # too many false alarms: drawn hollow
             ax.scatter([r.cost_pct for r in bad], [100 * r.recall for r in bad], s=size,
                        facecolors="none", edgecolors=color, marker=marker, alpha=0.6,
                        linewidths=1, zorder=3, label=None if good else family)
     front = pareto_front(results)
-    ax.step([r.cost_pct for r in front], [100 * r.recall for r in front], where="post",
-            color="#16a34a", alpha=0.35, linewidth=2, zorder=2,
-            label="Best trade-off (Pareto front)")
+    if len(front) > 1:
+        ax.step([r.cost_pct for r in front], [100 * r.recall for r in front], where="post",
+                color="#16a34a", alpha=0.35, linewidth=2, zorder=2,
+                label="Best trade-off (Pareto front)")
     ax.set_xscale("log")
     ax.set_xlabel("Compute cost, % of running the judge on every test (log scale)")
     ax.set_ylabel("Failures caught (recall, %)")
@@ -69,7 +77,8 @@ def plot_frontier(results: list[StrategyResult], path: Path, title: str) -> None
     ax.grid(True, which="both", alpha=0.25)
     low = min(100 * r.recall for r in results)
     ax.set_ylim(max(0, (low // 10) * 10 - 5), 102)
-    ax.legend(fontsize=7.5, loc="lower right", frameon=False)
+    ax.legend(fontsize=7.5, loc="upper left", bbox_to_anchor=(1.01, 1), frameon=False,
+              title="hollow = too many false alarms", title_fontsize=7.5)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     fig.tight_layout()
@@ -85,9 +94,68 @@ def _strategy_rows(results: list[StrategyResult]) -> pd.DataFrame:
     } for r in results])
 
 
+def _timing_line(df: pd.DataFrame) -> list[str]:
+    if "l3_seconds" in df and df["l3_seconds"].sum() > 0:
+        return [f"Measured time per test: L1 {1000 * df['l1_seconds'].mean():.2f} ms, "
+                f"L2 {1000 * df['l2_seconds'].mean():.1f} ms, "
+                f"L3 {df['l3_seconds'].mean():.2f} s.", ""]
+    return []
+
+
+def _unlabelled_report(df: pd.DataFrame, run_dir: Path, meta: dict) -> dict:
+    """A real run without my labels: no ground truth, so no recall and no cost curve."""
+    n = len(df)
+    fails = {name: int((~df[col]).sum()) for name, col in
+             (("L1", "l1_pass"), ("L2", "l2_pass"), ("L3", "l3_pass"))}
+    disagree = int((df["l1_pass"] != df["l3_pass"]).sum())
+    rule_counts = (df.loc[~df["l1_pass"], "l1_details"].str.split(", ").explode()
+                   .value_counts().reset_index())
+    rule_counts.columns = ["rule", "answers failing it"]
+    by_cat = df.groupby("category").agg(
+        tests=("case_id", "count"),
+        L1_fails=("l1_pass", lambda s: int((~s).sum())),
+        L2_fails=("l2_pass", lambda s: int((~s).sum())),
+        L3_fails=("l3_pass", lambda s: int((~s).sum())),
+    ).reset_index()
+    lines = [
+        f"# Evaluation report: `{run_dir.name}`",
+        "",
+        f"- Assistant: `{meta.get('assistant')}`  ·  L2 embedder: `{meta.get('embedder')}`  ·  "
+        f"L3 judge: `{meta.get('judge')}`",
+        f"- Tests: {n}  ·  failed by rules: {fails['L1']}, by similarity: {fails['L2']}, "
+        f"by the judge: {fails['L3']}",
+        "",
+        "**No ground truth yet.** Nobody knows for sure which of these answers are wrong, so "
+        "this report doesn't claim how many failures each level catches. Label answers with "
+        f"`mfeval label --name {run_dir.name}`, then run the report again.",
+        "",
+        "## How the levels agree with each other",
+        "",
+        md_table(level_agreement(df)),
+        "",
+        f"Rules and judge disagree on **{disagree}** answers. Those are the ones to label first.",
+        "",
+        "## Which rules fail",
+        "",
+        md_table(rule_counts) if len(rule_counts) else "No rule failures.",
+        "",
+        "## By category",
+        "",
+        md_table(by_cat),
+        "",
+    ] + _timing_line(df)
+    (run_dir / "report.md").write_text("\n".join(lines), encoding="utf-8")
+    stale = run_dir / "frontier.png"
+    if stale.exists():
+        stale.unlink()  # an old cost curve would look like a result
+    return {"mode": "unlabelled", "fails": fails, "disagree": disagree}
+
+
 def build_report(df: pd.DataFrame, run_dir: Path, truth_source: str, costs: dict,
-                 labels: pd.DataFrame | None = None) -> dict:
+                 labels: pd.DataFrame | None = None, mode: str = "exact") -> dict:
     meta = json.loads((run_dir / "meta.json").read_text())
+    if mode == "unlabelled":
+        return _unlabelled_report(df, run_dir, meta)
     results = run_strategies(df, costs)
     pd.DataFrame([r.__dict__ for r in results]).to_csv(run_dir / "strategies.csv", index=False)
 
@@ -166,12 +234,8 @@ def build_report(df: pd.DataFrame, run_dir: Path, truth_source: str, costs: dict
               .rename(columns={"count": "tests", "mean": "failure rate"}))
     by_cat["failure rate"] = by_cat["failure rate"].map(lambda v: f"{100 * v:.0f}%")
     lines += ["## Where the assistant fails", "", md_table(by_cat), ""]
-    if "l3_seconds" in df and df["l3_seconds"].sum() > 0:
-        lines += [f"Measured time per test: L1 {1000 * df['l1_seconds'].mean():.2f} ms, "
-                  f"L2 {1000 * df['l2_seconds'].mean():.1f} ms, "
-                  f"L3 {df['l3_seconds'].mean():.2f} s.",
-                  ""]
+    lines += _timing_line(df)
 
     (run_dir / "report.md").write_text("\n".join(lines), encoding="utf-8")
-    return {"full": full, "match_full": match_full, "at_90": at_90, "l1_only": l1_only,
-            "n_fail": n_fail}
+    return {"mode": mode, "full": full, "match_full": match_full, "at_90": at_90,
+            "l1_only": l1_only, "n_fail": n_fail}

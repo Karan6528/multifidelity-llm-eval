@@ -57,3 +57,12 @@ def test_cheapest_reaching_respects_target():
 def test_kappa():
     assert cohen_kappa([1, 0, 1, 0], [1, 0, 1, 0]) == 1.0
     assert abs(cohen_kappa([1, 1, 0, 0], [1, 0, 1, 0])) < 1e-9
+
+
+def test_triage_only_pays_the_judge_for_rule_failures():
+    df = toy_scores()
+    results = by_family(run_strategies(df), "Rules triage, judge confirms")
+    base = next(r for r in results if r.label == "judge confirms rule fails")
+    n_fail_l1 = int((~df["l1_pass"]).sum())
+    assert base.cost == len(df) * 1 + 100 * n_fail_l1
+    assert base.precision == 1.0  # the toy judge is always right, so no false alarms
